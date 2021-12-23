@@ -15,11 +15,16 @@ async function setupBullQueue(queueName, concurrency = 10) {
   bullQueue.process(queueName, concurrency, path.join(__dirname, 'worker.js'));
   bullQueue.on('completed', (job, returnvalue) => {
     const jobMetadata = `(id=${job.id} name=${job.name} data=${JSON.stringify(job.data)})`;
-    console.log(`[COMPLETE] Job return ${JSON.stringify(returnvalue)} ${jobMetadata}`);
+    console.log(
+      `[${queueName}][COMPLETE] Job return ${JSON.stringify(returnvalue)} ${jobMetadata}`
+    );
   });
   bullQueue.on('failed', (job, failedReason) => {
     const jobMetadata = `id=${job.id} name=${job.name} data=${JSON.stringify(job.data)}`;
-    console.log(`[FAIL] Job failed due to ${failedReason} ${jobMetadata}`);
+    console.log(`[${queueName}][FAIL] Job failed due to ${failedReason} ${jobMetadata}`);
+  });
+  bullQueue.on('cleaned', function (jobs, type) {
+    console.log(`[${queueName}][CLEAN] Cleaned ${jobs.length} ${type} jobs`);
   });
 
   return bullQueue;
@@ -28,6 +33,17 @@ async function setupBullQueue(queueName, concurrency = 10) {
 const run = async () => {
   const stopBillUserMq = await setupBullQueue('StopBillUserMQ');
   const sendEmailMq = await setupBullQueue('SendEmailMQ');
+
+  const cleanAllQueues = () => {
+    // clean all completed jobs over 5s ago
+    stopBillUserMq.clean(5000, 'completed');
+    sendEmailMq.clean(5000, 'completed');
+  };
+
+  cleanAllQueues();
+  setInterval(() => {
+    cleanAllQueues();
+  }, 120000); // every 2 min
 
   const app = express();
   app.use(bodyParser());
